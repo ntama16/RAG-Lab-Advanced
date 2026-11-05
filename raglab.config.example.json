@@ -1,0 +1,16 @@
+{
+  "models": {
+    "embedding": {
+      "provider": "ollama", "base_url": "http://localhost:11434", "model": "nomic-embed-text",
+      "query_prefix": "search_query: ", "doc_prefix": "search_document: "
+    },
+    "reranker": {
+      "provider": "cohere_compat", "base_url": "http://localhost:8080/v1", "model": "bge-reranker-v2-m3"
+    },
+    "router": { "provider": "ollama", "base_url": "http://localhost:11434", "model": "qwen2.5:7b" },
+    "generator": {
+      "provider": "anthropic", "base_url": "https://api.anthropic.com/v1", "model": "claude-sonnet-4-6",
+      "api_key_env": "ANTHROPIC_API_KEY"
+    }
+  }
+}

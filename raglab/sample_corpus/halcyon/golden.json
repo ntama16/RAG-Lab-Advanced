@@ -1,0 +1,89 @@
+[
+  {
+    "id": "g1",
+    "question": "Can I send back a ZX-481 after three weeks?",
+    "relevant_docs": [
+      "POL-RET-v3"
+    ],
+    "probes": "Paraphrase (send back = return), date canonicalisation (three weeks = 21 days), version conflict (v2 says 30 days)."
+  },
+  {
+    "id": "g2",
+    "question": "Is the Ridgeline battery covered by warranty?",
+    "relevant_docs": [
+      "POL-WAR-01",
+      "MAN-ZX481",
+      "SUP-FAQ-02"
+    ],
+    "probes": "Product alias (Ridgeline = ZX-481) and cross-document synthesis."
+  },
+  {
+    "id": "g3",
+    "question": "How do I open an RMA for a defective headlamp?",
+    "relevant_docs": [
+      "SUP-RMA-01",
+      "POL-WAR-01"
+    ],
+    "probes": "Abbreviation expansion (RMA) and procedural retrieval."
+  },
+  {
+    "id": "g4",
+    "question": "My new headlamp arrived broken and won't switch on",
+    "relevant_docs": [
+      "SUP-DOA-01"
+    ],
+    "probes": "Semantic gap: 'arrived broken' → DOA; false positive lock-out."
+  },
+  {
+    "id": "g5",
+    "question": "What is the ETA for an express order to Sydney?",
+    "relevant_docs": [
+      "POL-SHIP-01"
+    ],
+    "probes": "Abbreviation (ETA) and numeric answer extraction."
+  },
+  {
+    "id": "g6",
+    "question": "How long until a refund shows up after the warehouse gets my return?",
+    "relevant_docs": [
+      "POL-RET-v3",
+      "OPS-WH-01",
+      "SUP-FAQ-01"
+    ],
+    "probes": "Multiple consistent sources; diversity selection should surface different documents."
+  },
+  {
+    "id": "g7",
+    "question": "What was the return rate on headlamps and what caused it?",
+    "relevant_docs": [
+      "ENG-QUAL-01"
+    ],
+    "probes": "Lexical trap: 'return' also matches the Finance ROI memo and the returns policy."
+  },
+  {
+    "id": "g8",
+    "question": "Does the 481 survive being dropped in a lake?",
+    "relevant_docs": [
+      "MAN-ZX481"
+    ],
+    "probes": "Alias ('the 481') plus semantic mapping (dropped in a lake → submersion / IPX7)."
+  },
+  {
+    "id": "g9",
+    "question": "Why does my watch take ages to find satellites and how do I fix it?",
+    "relevant_docs": [
+      "SUP-TPW-01",
+      "MAN-TPW"
+    ],
+    "probes": "Decomposition (cause + fix) and paraphrase (find satellites → GPS fix)."
+  },
+  {
+    "id": "g10",
+    "question": "What restocking fee applies to an opened power bank and is it waived for DOA?",
+    "relevant_docs": [
+      "POL-RET-v3",
+      "FIN-REF-01"
+    ],
+    "probes": "Multi-part question spanning Policy and Finance sources."
+  }
+]

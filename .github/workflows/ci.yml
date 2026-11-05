@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every version pyproject.toml claims, not just the one development happens on.
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml  # the default looks for requirements.txt, which this repo has none of
+      - run: pip install -e '.[dev]'
+      # The suite runs on the deterministic mock models, so it needs no model server or network.
+      - run: pytest -q
+
+  ui:
+    name: UI bundle matches source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      # raglab/static is committed so users need no Node. A source change without a rebuild ships a
+      # UI that does not match the code, so a stale bundle fails the build.
+      - name: Check the committed bundle is current
+        run: |
+          git add -A raglab/static
+          if ! git diff --cached --quiet -- raglab/static; then
+            git diff --cached --stat -- raglab/static
+            echo "::error::raglab/static is out of date. Run 'npm run build' in frontend/ and commit the result."
+            exit 1
+          fi

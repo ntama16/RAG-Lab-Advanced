@@ -1,0 +1,12 @@
+data/
+raglab.config.json
+node_modules/
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
+.DS_Store
+dist/
+build/
+# Raw screenshots can show documents from a private corpus; publish redacted copies only.
+/screenshots/
