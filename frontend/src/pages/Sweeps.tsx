@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, Any , usePersisted } from "../api";
 import { CHANNEL, LineChart } from "../viz";
-import { DIAGNOSTIC, METRIC_SHORT, STAGES, STAGE_HELP, WHOLE_PROMPT, isLegacy, seriesLabel, stageLabel } from "../stages";
+import { DIAGNOSTIC, HNSW_RECALL_HELP, METRIC_SHORT, STAGES, STAGE_HELP, WHOLE_PROMPT, hnswRecallCell, isLegacy, seriesLabel, stageLabel } from "../stages";
 
 const PARAMS: [string, string, string, string][] = [
   ["dense.ef_search", "HNSW ef_search", "32, 64, 128, 256, 512",
@@ -72,6 +72,9 @@ export default function Sweeps({ pipeline }: { pipeline: Any }) {
   const stages = cur ? STAGES.filter((s) => cur.points.some((p: Any) => p.metrics.stages[s])) : [];
   // Which stages exist depends on the sweep being viewed, so a remembered one can be absent.
   useEffect(() => { if (stages.length && !stages.includes(stage)) setStage(stages[stages.length - 1]); }, [stages, stage, setStage]);
+  // The approximation's own number, plotted only for the knob that trades it, where a flat line of
+  // gold-label metrics would otherwise say the knob does nothing.
+  const showHnsw = cur?.spec?.param === "dense.ef_search" && cur.points.some((p: Any) => p.metrics.hnsw_recall != null);
 
   return (
     <>
@@ -109,7 +112,8 @@ export default function Sweeps({ pipeline }: { pipeline: Any }) {
                        ys: cur.points.map((p: Any) => p.metrics.pipeline_ms ?? p.metrics.latency_ms) }}
               series={[{ label: seriesLabel("recall", stage, cur.spec.k, first), color: "var(--dense)", ys: cur.points.map((p: Any) => st(p, stage, "recall")) },
                        { label: seriesLabel("mrr", stage, cur.spec.k, first), color: "var(--bm25)", ys: cur.points.map((p: Any) => st(p, stage, "mrr")) },
-                       { label: seriesLabel("ndcg", stage, cur.spec.k, first), color: "var(--ok)", ys: cur.points.map((p: Any) => st(p, stage, "ndcg")) }]} />
+                       { label: seriesLabel("ndcg", stage, cur.spec.k, first), color: "var(--ok)", ys: cur.points.map((p: Any) => st(p, stage, "ndcg")) },
+                       ...(showHnsw ? [{ label: METRIC_SHORT.hnsw_recall, color: "var(--graph)", ys: cur.points.map((p: Any) => p.metrics.hnsw_recall ?? null) }] : [])]} />
             <div className="small muted" style={{ marginTop: 6 }}>† best query variant for that channel, picked with the gold label — what it could reach, not what was delivered.
               {!legacy && <> &nbsp; * scored over the whole prompt rather than the top k.</>}
               &nbsp; The ranking score is position quality times coverage, between 0 and 1 — not a textbook nDCG.</div>
@@ -120,11 +124,11 @@ export default function Sweeps({ pipeline }: { pipeline: Any }) {
               definitions: <code>context</code> recall was cut at the top k rather than covering the whole prompt, and the
               latency includes the cost of verifying the approximation. Its numbers are shown as recorded and are not
               comparable with a current sweep — re-run it to compare like with like.</div>}
-            <div className="legend" style={{ marginTop: 6 }}>{[[METRIC_SHORT.recall, "var(--dense)"], [METRIC_SHORT.mrr, "var(--bm25)"], [METRIC_SHORT.ndcg, "var(--ok)"]].map(([l, c]) => <span key={l}><svg width="14" height="6"><rect width="14" height="3" y="1.5" fill={c} /></svg>{l}</span>)}<span><svg width="14" height="6"><line x1="0" x2="14" y1="3" y2="3" stroke="var(--muted)" strokeDasharray="3 2" /></svg>latency</span></div></div>
-          <div className="panel"><h3 style={{ marginBottom: 8 }}>Every point</h3><div style={{ overflowX: "auto" }}><table><thead><tr><th>{cur.label}</th>{stages.map((s) => <th className="num" key={s} style={{ color: CHANNEL[s] }} title={STAGE_HELP[s]}>{s}{DIAGNOSTIC.has(s) ? "†" : !legacy && WHOLE_PROMPT.has(s) ? "*" : ""}<br />recall / MRR</th>)}<th className="num">abstain on<br />unanswerable</th><th className="num">tokens</th><th className="num">cost</th><th className="num">ms</th></tr></thead>
+            <div className="legend" style={{ marginTop: 6 }}>{[[METRIC_SHORT.recall, "var(--dense)"], [METRIC_SHORT.mrr, "var(--bm25)"], [METRIC_SHORT.ndcg, "var(--ok)"], ...(showHnsw ? [[METRIC_SHORT.hnsw_recall, "var(--graph)"]] : [])].map(([l, c]) => <span key={l}><svg width="14" height="6"><rect width="14" height="3" y="1.5" fill={c} /></svg>{l}</span>)}<span><svg width="14" height="6"><line x1="0" x2="14" y1="3" y2="3" stroke="var(--muted)" strokeDasharray="3 2" /></svg>latency</span></div></div>
+          <div className="panel"><h3 style={{ marginBottom: 8 }}>Every point</h3><div style={{ overflowX: "auto" }}><table><thead><tr><th>{cur.label}</th>{stages.map((s) => <th className="num" key={s} style={{ color: CHANNEL[s] }} title={STAGE_HELP[s]}>{s}{DIAGNOSTIC.has(s) ? "†" : !legacy && WHOLE_PROMPT.has(s) ? "*" : ""}<br />recall / MRR</th>)}<th className="num" title={HNSW_RECALL_HELP}>{METRIC_SHORT.hnsw_recall}</th><th className="num">abstain on<br />unanswerable</th><th className="num">tokens</th><th className="num">cost</th><th className="num">ms</th></tr></thead>
             <tbody>{cur.points.map((p: Any) => <tr key={String(p.value)}><td className="mono">{String(p.value)}
               {p.degenerate && <div className="small muted" title="Below dense k, so the search ran wider than asked">ran at {String(p.effective)}</div>}</td>{stages.map((s) => <td className="num" key={s}>{st(p, s, "recall") === null ? "–" : `${st(p, s, "recall").toFixed(2)} / ${st(p, s, "mrr").toFixed(2)}`}</td>)}
-              <td className="num">{p.metrics.abstention == null ? "–" : `${Math.round(p.metrics.abstention * 100)}%`}</td><td className="num">{p.metrics.tokens}</td><td className="num">{p.metrics.cost ? `$${p.metrics.cost.toFixed(4)}` : "–"}</td><td className="num">{p.metrics.latency_ms}</td></tr>)}</tbody></table></div></div></>
+              <td className="num">{hnswRecallCell(p.metrics)}</td><td className="num">{p.metrics.abstention == null ? "–" : `${Math.round(p.metrics.abstention * 100)}%`}</td><td className="num">{p.metrics.tokens}</td><td className="num">{p.metrics.cost ? `$${p.metrics.cost.toFixed(4)}` : "–"}</td><td className="num">{p.metrics.latency_ms}</td></tr>)}</tbody></table></div></div></>
           : <div className="panel"><h3>No sweep selected</h3><p className="muted" style={{ marginTop: 6 }}>Two curves worth running first: <b>HNSW ef_search</b> for recall against latency, and <b>Index</b> across several chunk sizes for the chunk-size curve.</p></div>}</div>
       </div>
     </>

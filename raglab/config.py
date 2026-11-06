@@ -32,8 +32,19 @@ def load_models() -> dict:
     return json.loads(json.dumps(DEFAULT_MODELS))
 
 
-def save_models(models: dict) -> None:
+def save_models(models: dict) -> bool:
+    """Write the role table to the config file, except in a RAGLAB_MOCK session.
+
+    Mock mode ignores this file when it loads, so writing to it could only replace real settings
+    with stand-ins that the next real start would then silently run on.
+
+    :param models: The role table.
+    :returns: Whether the file was written.
+    """
+    if os.environ.get("RAGLAB_MOCK") == "1":
+        return False
     CONFIG_PATH.write_text(json.dumps({"models": models}, indent=2))
+    return True
 
 
 def api_key(role_cfg: dict) -> str | None:

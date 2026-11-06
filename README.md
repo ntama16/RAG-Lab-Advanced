@@ -11,6 +11,12 @@ timings, prompts and raw model responses.
 
 ## Run it
 
+You need:
+
+- **Python 3.10 or newer.** Check `python3 --version`: macOS ships 3.9, where the install below fails with a misleading "setup.py not found".
+- **A C++ compiler.** `hnswlib` has no prebuilt wheels, so pip compiles it. On macOS run `xcode-select --install`; on Debian or Ubuntu, `sudo apt install build-essential python3-dev`.
+- **[Ollama](https://ollama.com), installed and running**, for the default local models (about 5 GB to download). To use cloud models or another server instead, skip the `ollama pull` line and set the roles on the Models page.
+
 ```bash
 git clone https://github.com/ntama16/RAG-Lab-Advanced.git && cd RAG-Lab-Advanced
 python3 -m venv .venv && source .venv/bin/activate
@@ -18,6 +24,13 @@ pip install -e .
 ollama pull nomic-embed-text && ollama pull llama3.1:8b     # or point the roles at cloud models
 raglab                                                       # http://127.0.0.1:8600
 ```
+
+Start it from the project folder: `./data` and `raglab.config.json` are relative to where you launch it, so starting
+elsewhere opens an empty lab. If port 8600 is taken, use `raglab --port 8601`.
+
+The default reranker is `llama3.1:8b` scoring one passage at a time. It needs nothing extra, but it is slow and often scores
+every passage 0. For a real one, run `pip install -e '.[crossencoder]'` (torch, 1 GB or more, then a 2 GB model on first use)
+and set the Reranker role to `cross_encoder` on the Models page.
 
 The UI is pre-built into `raglab/static`, so Node is only needed if you change the frontend.
 The navigation follows the work: **Setup** (Models) → **Build** (Corpus, Chunking, Vector space) → **Run** (Normalisation lab, Workbench, Compare)
@@ -27,7 +40,7 @@ Two sample corpora ship with it: **Halcyon Trailworks** (25 documents with a 10-
 normalisation rules) and **Kestrel** (8 cross-referencing engineering docs, good for graph and multi-hop).
 
 No model server handy? `RAGLAB_MOCK=1 raglab` runs the whole app on deterministic stand-ins. That mode exists
-for tests and UI work only; its results mean nothing.
+for tests and UI work only; its results mean nothing. Nothing saved in this mode reaches `raglab.config.json`.
 
 It is a single-user tool with no authentication, so by default it listens on `127.0.0.1` only. Do not start it with
 `--host 0.0.0.0` on a network you do not control: anyone who can reach it can read your corpus and spend
@@ -105,7 +118,7 @@ prefer the "API key env var" field. See [SECURITY.md](SECURITY.md).
 ## Experiment tooling
 
 - **Compare**: one question under two presets (or two indexes): settings diff, answers, a rank-flow of which passages reached the model on each side, and per-stage time and tokens.
-- **Sweeps**: one knob across values (`ef_search`, RRF k, rerank top-n, BM25 k1/b, fusion weights, context size…) or across **indexes** for index-time choices such as chunk size; metric and latency curves, saved with their settings.
+- **Sweeps**: one knob across values (`ef_search`, RRF k, rerank top-n, BM25 k1/b, fusion weights, context size…) or across **indexes** for index-time choices such as chunk size; metric and latency curves, saved with their settings. An `ef_search` sweep also measures HNSW recall against exact search.
 - **Presets**: named pipeline configurations, stored server-side, exportable and importable as JSON.
 - **Token and cost accounting**: real usage from Ollama, OpenAI-compatible and Anthropic responses (estimated otherwise), per call, per stage, per run; set `price_in` / `price_out` per role.
 - **Robustness**: per-role `timeout` and `retries` with backoff; index-time model calls (chunk contexts, graph extraction, community reports, document metadata) are cached by prompt, so rebuilds are free.
@@ -139,11 +152,13 @@ prefer the "API key env var" field. See [SECURITY.md](SECURITY.md).
 ```
 raglab/            Python package (API, pipeline, indexes, providers, built UI in static/)
 raglab/sample_corpus/  the Halcyon and Kestrel sample corpora, shipped inside the package
-frontend/          UI source.  npm install && npm run dev  (proxies /api to :8600);  npm run build
+frontend/          UI source.  npm ci && npm run dev  (proxies /api to :8600);  npm run build
 tests/             end-to-end test on the mock provider:  pip install -e '.[dev]' && pytest
 ```
 
-Settings live in `raglab.config.json` (see the example file); data in `./data`. Override with `RAGLAB_CONFIG` and `RAGLAB_DATA`.
+Settings live in `raglab.config.json`, which the Models page writes; data in `./data`. Override with `RAGLAB_CONFIG` and `RAGLAB_DATA`.
+`raglab.config.example.json` shows a mixed local and cloud setup. To use it, copy it to `raglab.config.json`, pull `qwen2.5:7b`,
+start a rerank server on port 8080 and set `ANTHROPIC_API_KEY`: without those three, only the embedding role works.
 
 ## Parked, and why
 

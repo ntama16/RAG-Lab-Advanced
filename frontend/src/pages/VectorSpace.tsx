@@ -25,9 +25,11 @@ export default function VectorSpace() {
     } catch (e) { setErr(String((e as Error).message)); }
   };
 
-  useEffect(() => { api.get("/api/indexes").then((ix: Any[]) => { const r = ix.filter((i) => i.status === "ready"); setIndexes(r); if (!r.some((i) => i.id === indexId) && r[0]) setIndexId(r[0].id); }); }, []); // eslint-disable-line
-  useEffect(() => { if (!indexId) return; setDetail(null); setUmap(null); setMethod("pca"); setPinned(null); setProbe(null); setNear([]); setExtra({});
-    api.get(`/api/indexes/${indexId}`).then((d) => { setDetail(d); setField(d.docs.some((x: Any) => x.meta.doc_type) ? "doc_type" : "document"); }).catch((e) => setErr(String(e))); }, [indexId]);
+  useEffect(() => { api.get("/api/indexes").then((ix: Any[]) => { const r = ix.filter((i) => i.status === "ready"); setIndexes(r); if (!r.some((i) => i.id === indexId) && r[0]) setIndexId(r[0].id); }).catch((e) => setErr(String(e))); }, []); // eslint-disable-line
+  // Waits for the list, because the remembered id can belong to another data folder or a deleted
+  // index: asking for it first put a lasting error above a page that then loaded fine.
+  useEffect(() => { if (!indexes.some((i) => i.id === indexId)) return; setDetail(null); setUmap(null); setMethod("pca"); setPinned(null); setProbe(null); setNear([]); setExtra({});
+    api.get(`/api/indexes/${indexId}`).then((d) => { setDetail(d); setField(d.docs.some((x: Any) => x.meta.doc_type) ? "doc_type" : "document"); }).catch((e) => setErr(String(e))); }, [indexId, indexes]);
 
   const groups = useMemo(() => makeGroups(detail?.docs ?? [], field), [detail, field]);
   const fields = useMemo(() => ["document", ...Array.from(new Set<string>((detail?.docs ?? []).flatMap((d: Any) => Object.keys(d.meta))))], [detail]);

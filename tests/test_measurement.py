@@ -735,6 +735,49 @@ def test_latency_reports_the_pipeline_apart_from_the_cost_of_verifying_it():
     assert m["pipeline_ms"] <= m["latency_ms"], "the diagnostic's cost comes out, never gets added"
 
 
+def test_hnsw_recall_averages_every_retrieval_and_keeps_a_measured_zero():
+    stage = lambda recall: {"stage": "retrieve", "data": {"hnsw_recall_vs_exact": recall}}  # noqa: E731
+    assert evals.hnsw_recall({"stages": [stage(1.0), stage(0.5)]}) == 0.75, "a corrective second retrieval counts too"
+    assert evals.hnsw_recall({"stages": [stage(0.0)]}) == 0.0, "measured, and it was zero"
+    assert evals.hnsw_recall({"stages": [{"stage": "retrieve", "data": {}}, {"stage": "rerank", "data": {}}]}) is None
+    assert evals.hnsw_recall({}) is None
+
+
+def test_hnsw_recall_is_reported_only_when_it_was_measured():
+    """None means not measured. Reading a run with the diagnostic off as 0% would invent a failure."""
+    sid, iid = _abstention_set(), _ready_index()
+    es = [s for s in client.get("/api/evalsets").json() if s["id"] == sid][0]
+    for run_id, compare in (("recall-on", True), ("recall-off", False)):
+        asyncio.run(evals.run_eval(store, run_id, indexer.runtime(store, iid), MODELS, es,
+                                   {"generate": {"enabled": False}, "dense": {"compare_exact": compare}}, run_id, False, 5))
+    runs = {r["id"]: r["metrics"] for r in client.get(f"/api/evalruns?evalset_id={sid}").json()["runs"]}
+    assert 0.0 <= runs["recall-on"]["hnsw_recall"] <= 1.0
+    assert runs["recall-off"]["hnsw_recall"] is None
+
+
+def test_an_ef_search_sweep_always_measures_what_the_knob_trades_away():
+    """ef_search only buys HNSW recall, so a sweep of it that does not measure that recall has
+    nothing to plot. The "Fast hybrid baseline" starter turns the diagnostic off."""
+    sid, iid = _abstention_set(), _ready_index()
+    es = [s for s in client.get("/api/evalsets").json() if s["id"] == sid][0]
+    asyncio.run(evals.run_sweep(store, "ef-recall", MODELS, es,
+                                {"param": "dense.ef_search", "values": [32, 64], "index_id": iid, "k": 5,
+                                 "config": {"dense": {"compare_exact": False}}}))
+    saved = [s for s in client.get(f"/api/sweeps?evalset_id={sid}").json()["sweeps"] if s["id"] == "ef-recall"][0]
+    assert all(p["metrics"]["hnsw_recall"] is not None for p in saved["points"])
+    assert saved["spec"]["config"]["dense"]["compare_exact"] is True, "the record says what actually ran"
+
+
+def test_a_sweep_of_another_knob_keeps_the_diagnostic_setting_it_was_given():
+    sid, iid = _abstention_set(), _ready_index()
+    es = [s for s in client.get("/api/evalsets").json() if s["id"] == sid][0]
+    asyncio.run(evals.run_sweep(store, "k-recall", MODELS, es,
+                                {"param": "rerank.top_n", "values": [4], "index_id": iid, "k": 5,
+                                 "config": {"dense": {"compare_exact": False}}}))
+    saved = [s for s in client.get(f"/api/sweeps?evalset_id={sid}").json()["sweeps"] if s["id"] == "k-recall"][0]
+    assert saved["points"][0]["metrics"]["hnsw_recall"] is None
+
+
 def test_repeats_and_warmup_are_recorded_and_bounded():
     sid, iid = _abstention_set(), _ready_index()
     es = [s for s in client.get("/api/evalsets").json() if s["id"] == sid][0]

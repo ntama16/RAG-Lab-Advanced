@@ -2,6 +2,7 @@
 process that dies mid-build does not leave an index claiming to be building for ever.
 """
 import asyncio
+import inspect
 import json
 import os
 import tempfile
@@ -286,6 +287,66 @@ def test_a_build_can_be_stopped_and_says_so():
     assert row["status"] == "failed", "not left pending"
     assert "Stopped" in row["stats"]["error"]
     assert indexer.JOBS[iid]["stage"] == "cancelled"
+
+
+@pytest.fixture
+def own_permit(monkeypatch):
+    """A contended semaphore binds to its event loop, and each test here runs in a new one."""
+    monkeypatch.setattr(main_mod, "BATCH", asyncio.Semaphore(1))
+
+
+def test_a_build_stopped_while_queued_is_marked_failed_not_left_building(own_permit):
+    """Stopped behind the batch permit, the build never starts, so its own cancellation handling
+    never runs. It used to sit at 'building' until the server restarted."""
+    from raglab import main as m
+
+    async def scenario():
+        iid = store.create_index("queued-stop", indexer.merged_config({}))
+        await m.BATCH.acquire()  # another job holds the permit, so this one has to wait
+        try:
+            task = m._start_build(iid)
+            await asyncio.sleep(0)
+            assert m._stop(iid) is True
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            m.BATCH.release()
+        await asyncio.sleep(0)  # the done callback runs on the next loop pass
+        return iid
+    row = store.index(asyncio.run(scenario()))
+    assert row["status"] == "failed", "not left looking as if it is still building"
+    assert "Stopped" in row["stats"]["error"]
+
+
+def test_marking_a_stopped_build_leaves_a_finished_index_alone():
+    """The cancel path and the done callback can both report a stop, and a stop that arrives as a
+    build completes must not turn a good index into a failed one."""
+    iid = store.create_index("already-done", indexer.merged_config({}))
+    store.x("UPDATE indexes SET status='ready', stats=? WHERE id=?", (json.dumps({"chunks": 3}), iid))
+    indexer.mark_stopped(store, iid)
+    row = store.index(iid)
+    assert row["status"] == "ready" and row["stats"] == {"chunks": 3}
+
+
+def test_work_stopped_while_queued_is_closed_rather_than_abandoned(own_permit):
+    """Nothing would ever await it, which is a RuntimeWarning and a leak for every stopped job."""
+    async def scenario():
+        async def work():
+            raise AssertionError("a job stopped in the queue must never start")
+
+        coro = work()
+        await main_mod.BATCH.acquire()
+        try:
+            task = asyncio.create_task(main_mod._batch(coro))
+            await asyncio.sleep(0)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            main_mod.BATCH.release()
+        assert inspect.getcoroutinestate(coro) == inspect.CORO_CLOSED
+        assert main_mod.BATCH.locked() is False, "the permit is not lost with it"
+    asyncio.run(scenario())
 
 
 def test_stopping_a_build_that_is_not_running_reports_it():

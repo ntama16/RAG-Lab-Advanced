@@ -143,6 +143,17 @@ JOBS: dict[str, dict] = {}
 _RUNTIME: "OrderedDict[str, Runtime]" = OrderedDict()
 
 
+def mark_stopped(store: Store, iid: str) -> None:
+    """Fail an index whose build was stopped, whether it was running or still queued.
+
+    :param store: Where the index lives.
+    :param iid: The index id. One that has left 'building' keeps its status, so a stop that lands
+        as a build completes cannot turn a good index into a failed one.
+    """
+    store.x("UPDATE indexes SET status='failed', stats=? WHERE id=? AND status='building'",
+            (json.dumps({"error": "Stopped before this index finished building. Build it again when ready."}), iid))
+
+
 def merged_config(cfg: dict | None) -> dict:
     cfg = cfg or {}
     out = json.loads(json.dumps(DEFAULT_INDEX))
@@ -395,8 +406,7 @@ async def build(store: Store, iid: str, models: dict):
         job.update(stage="ready", done=1, total=1)
     except asyncio.CancelledError:
         job.update(stage="cancelled", error="Stopped before the index finished building.")
-        store.x("UPDATE indexes SET status='failed', stats=? WHERE id=?",
-                (json.dumps({"error": "Stopped before this index finished building. Build it again when ready."}), iid))
+        mark_stopped(store, iid)
         raise
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()

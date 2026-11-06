@@ -341,6 +341,17 @@ def verification_ms(out: dict) -> float:
                for s in out.get("stages", []) if s["stage"] == "retrieve")
 
 
+def hnsw_recall(out: dict) -> float | None:
+    """HNSW recall against exact search for one question, or None if it was not measured.
+
+    :param out: The pipeline result. A corrective second retrieval is its own stage, so it counts.
+    :returns: The mean over the question's retrievals. ``dense.compare_exact`` off means None, never 0.
+    """
+    recalls = [s["data"]["hnsw_recall_vs_exact"] for s in out.get("stages", [])
+               if s["stage"] == "retrieve" and "hnsw_recall_vs_exact" in s["data"]]
+    return round(float(np.mean(recalls)), 4) if recalls else None
+
+
 async def evaluate(store: Store, rt: Runtime, models: dict, items: list[dict], cfg: dict, k: int, judge: bool, job: dict,
                    on_row=None, control: bool = False, repeats: int = 1, warmup: bool = False,
                    rules: dict | None = None):
@@ -373,6 +384,7 @@ async def evaluate(store: Store, rt: Runtime, models: dict, items: list[dict], c
                # Median of the timed runs, with the verification diagnostic taken out of each.
                "pipeline_ms": round(float(np.median(timings)), 1) if timings else out["total_ms"],
                "verification_ms": round(verification_ms(out), 1), "timings": len(timings),
+               "hnsw_recall": hnsw_recall(out),
                "abstained": bool(res.get("abstained")),
                "crag_abstained": res.get("crag_abstained"), "answer_abstained": res.get("answer_abstained"),
                "tokens": int(res.get("tokens_in", 0) + res.get("tokens_out", 0)), "cost": res.get("cost", 0.0),
@@ -440,6 +452,7 @@ async def evaluate(store: Store, rt: Runtime, models: dict, items: list[dict], c
                # What the pipeline costs, apart from what proving its approximation costs.
                "pipeline_ms": int(np.mean([r["pipeline_ms"] for r in rows])) if rows else 0,
                "verification_ms": int(np.mean([r["verification_ms"] for r in rows])) if rows else 0,
+               "hnsw_recall": mean([r["hnsw_recall"] for r in rows if r["hnsw_recall"] is not None]),
                "repeats": repeats, "warmup": warmup,
                "tokens": int(np.mean([r["tokens"] for r in rows])) if rows else 0, "cost": mean([r["cost"] for r in rows]) or 0.0,
                "abstention": mean([1.0 if r["abstained"] else 0.0 for r in decided(unans)]),
@@ -591,7 +604,15 @@ async def run_sweep(store: Store, sweep_id: str, models: dict, evalset: dict, sp
 
     Every point runs under :func:`raglab.pipeline.controlled`: the cache is bypassed and adaptive
     routing cannot rewrite the setting under test. Each point is saved as it finishes.
+
+    A ``dense.ef_search`` sweep always measures HNSW recall: that is the one thing the knob trades
+    against latency, and gold-label metrics on a small corpus do not move with it. The check's cost
+    is kept out of ``pipeline_ms``, and the saved spec records that it ran.
     """
+    if spec["param"] == "dense.ef_search":
+        measured_cfg = copy.deepcopy(spec.get("config") or {})
+        measured_cfg.setdefault("dense", {})["compare_exact"] = True
+        spec = {**spec, "config": measured_cfg}
     values = spec["values"]
     job = SWEEPS[sweep_id] = {"done": 0, "total": len(values) * len(evalset["items"]) * max(1, int(spec.get("repeats", 1))),
                               "error": None, "status": "running", "partial": 0}

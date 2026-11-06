@@ -56,7 +56,7 @@ export default function Models({ onSaved }: { onSaved: (m: Any) => void }) {
       const r = await api.put("/api/models", { models });
       setModels(r.models); onSaved(r);
       setHealth(await api.get("/api/models/health"));
-      setMsg("Saved to raglab.config.json");
+      setMsg(r.saved ? "Saved to raglab.config.json" : "Mock mode: these settings last until the server stops. raglab.config.json was not changed.");
     } catch (e) { setMsg(String(e)); }
     setBusy(false);
   };
