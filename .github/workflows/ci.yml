@@ -12,6 +12,13 @@ jobs:
   test:
     name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    env:
+      # hnswlib ships no wheels and compiles with -march=native by default. The pip cache carries that
+      # wheel to runners with other CPUs, where importing it dies with SIGILL, so build it portably.
+      HNSWLIB_NO_NATIVE: "1"
+      # setup-python falls back to any cache for the same Python version, so a new key would still restore
+      # the native wheels. The cache version hashes this path, which is what keeps them out.
+      PIP_CACHE_DIR: ~/.cache/pip-portable
     strategy:
       fail-fast: false
       matrix:
