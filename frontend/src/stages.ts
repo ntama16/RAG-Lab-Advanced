@@ -79,7 +79,20 @@ export const METRIC_SHORT: Record<string, string> = {
   recall: "recall",
   mrr: "MRR",
   ndcg: "ranking score",
+  hnsw_recall: "HNSW recall",
 };
+
+export const HNSW_RECALL_HELP = "Share of the true nearest neighbours HNSW returned, against an exhaustive search. It measures the approximation, not the answer: gold-label metrics can stay flat while this moves. – means it was not measured (dense.compare_exact off).";
+
+/**
+ * HNSW recall for a table cell.
+ *
+ * @param metrics A run's or sweep point's metrics.
+ * @returns Three decimals, or "–" when not measured, which includes runs saved before it was recorded.
+ */
+export function hnswRecallCell(metrics?: { hnsw_recall?: number | null } | null): string {
+  return metrics?.hnsw_recall == null ? "–" : metrics.hnsw_recall.toFixed(3);
+}
 
 /** A metric's chart-series label, carrying the cut-off that was actually applied. */
 export function seriesLabel(metric: string, stage: string, k: number, metrics?: { version?: number } | null): string {

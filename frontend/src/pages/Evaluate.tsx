@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { api, Any, deepMerge, usePersisted } from "../api";
 import { CHANNEL } from "../viz";
 
-import { DIAGNOSTIC, METRIC_LABELS, STAGES, STAGE_HELP, WHOLE_PROMPT, cutoffLabelFor, isLegacy, stageLabel } from "../stages";
+import { cutoffLabelFor, DIAGNOSTIC, HNSW_RECALL_HELP, hnswRecallCell, isLegacy, METRIC_LABELS, METRIC_SHORT, STAGE_HELP, stageLabel, STAGES, WHOLE_PROMPT } from "../stages";
 
 const A_COLOR = "var(--muted)", B_COLOR = "var(--bm25)";
 // Names come from METRIC_LABELS so this screen and Sweeps cannot call one number two things.
@@ -201,12 +201,12 @@ export default function Evaluate({ pipeline, defaults }: { pipeline: Any; defaul
                   <td className="num" style={{ color: !same && rr(rb) > rr(ra) ? "var(--ok)" : !same && rr(rb) < rr(ra) ? "var(--bad)" : undefined }}>{same ? rr(rb).toFixed(2) : `${rr(ra).toFixed(2)} → ${rr(rb).toFixed(2)}`}</td></tr>; })}</tbody></table></div></div></>; })()}
           <div className="panel"><h3>All runs on “{current?.name ?? "no set selected"}”</h3>
             {!runs.length && <p className="muted" style={{ marginTop: 8 }}>No runs yet. Pick a question set and run an evaluation.</p>}
-            {!!runs.length && <div style={{ overflowX: "auto" }}><table style={{ marginTop: 8 }}><thead><tr><th>Run</th><th>Index</th>{STAGES.map((s) => <th className="num" key={s}>{s}<br />recall / MRR</th>)}<th className="num">abstain</th><th className="num">grounded</th><th className="num">tokens</th><th className="num">cost</th><th className="num">ms</th><th /></tr></thead>
+            {!!runs.length && <div style={{ overflowX: "auto" }}><table style={{ marginTop: 8 }}><thead><tr><th>Run</th><th>Index</th>{STAGES.map((s) => <th className="num" key={s}>{s}<br />recall / MRR</th>)}<th className="num" title={HNSW_RECALL_HELP}>{METRIC_SHORT.hnsw_recall}</th><th className="num">abstain</th><th className="num">grounded</th><th className="num">tokens</th><th className="num">cost</th><th className="num">ms</th><th /></tr></thead>
               <tbody>{runs.map((r) => <tr key={r.id}><td><button className="link" onClick={() => setOpen(r)}>{r.label}</button>
                 {r.metrics?.partial && <span className="tag bad" title="Saved as it ran; the run did not finish">{r.metrics.n} of {current?.items?.length ?? "?"}, unfinished</span>}
                 {isLegacy(r.metrics) && <span className="tag" title="Measured before the current metric definitions; not comparable with a current run">older metrics</span>}</td><td>{name(r.index_id)}</td>
                 {STAGES.map((s) => { const m = r.metrics?.stages?.[s]; return <td className="num" key={s}>{m ? `${(m.recall ?? m.hit).toFixed(2)} / ${m.mrr.toFixed(2)}` : "–"}</td>; })}
-                <td className="num">{r.metrics?.abstention == null ? "–" : `${Math.round(r.metrics.abstention * 100)}%`}</td><td className="num">{r.metrics?.groundedness == null ? "–" : `${Math.round(r.metrics.groundedness * 100)}%`}</td><td className="num">{r.metrics?.tokens || "–"}</td><td className="num">{r.metrics?.cost ? `$${r.metrics.cost.toFixed(4)}` : "–"}</td><td className="num">{r.metrics?.latency_ms || "–"}</td>
+                <td className="num">{hnswRecallCell(r.metrics)}</td><td className="num">{r.metrics?.abstention == null ? "–" : `${Math.round(r.metrics.abstention * 100)}%`}</td><td className="num">{r.metrics?.groundedness == null ? "–" : `${Math.round(r.metrics.groundedness * 100)}%`}</td><td className="num">{r.metrics?.tokens || "–"}</td><td className="num">{r.metrics?.cost ? `$${r.metrics.cost.toFixed(4)}` : "–"}</td><td className="num">{r.metrics?.latency_ms || "–"}</td>
                 <td className="num"><button className="link" onClick={() => guard("del", async () => { await api.del(`/api/evalruns/${r.id}`); await loadRuns(); })}>Delete</button></td></tr>)}</tbody></table></div>}
           </div>
           {open && <div className="panel"><div className="row"><h3 className="grow">{open.label}: rank of first evidence per question</h3><button className="link" onClick={() => setOpen(null)}>Close</button></div>

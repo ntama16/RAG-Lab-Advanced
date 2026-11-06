@@ -26,10 +26,23 @@ log = logging.getLogger("raglab")
 TASKS: dict[str, asyncio.Task] = {}
 
 
-def _track(coro, key: str) -> asyncio.Task:
+def _track(coro, key: str, on_cancelled=None) -> asyncio.Task:
+    """Run a job in the background under the id the client polls.
+
+    :param coro: The job.
+    :param key: The id to hold it under.
+    :param on_cancelled: Called once the task has been cancelled. A job stopped while queued never
+        started, so anything it would have cleaned up after itself has to be done from here.
+    :returns: The running task.
+    """
     task = asyncio.create_task(coro)
     TASKS[key] = task
-    task.add_done_callback(lambda t: TASKS.pop(key, None))
+
+    def finished(done: asyncio.Task) -> None:
+        TASKS.pop(key, None)
+        if on_cancelled and done.cancelled():
+            on_cancelled()
+    task.add_done_callback(finished)
     return task
 
 
@@ -40,8 +53,21 @@ BATCH = asyncio.Semaphore(1)
 
 
 async def _batch(coro):
-    async with BATCH:
+    try:
+        await BATCH.acquire()
+    except asyncio.CancelledError:
+        coro.close()  # stopped in the queue: it never started, so nothing would ever await it
+        raise
+    try:
         return await coro
+    finally:
+        BATCH.release()
+
+
+def _start_build(iid: str) -> asyncio.Task:
+    """Queue an index build, and fail the index if it is stopped before it gets to start."""
+    return _track(_batch(indexer.build(store, iid, _models_snapshot())), iid,
+                  on_cancelled=lambda: indexer.mark_stopped(store, iid))
 
 
 def _mark_interrupted_builds() -> int:
@@ -191,8 +217,7 @@ def put_models(body: ModelsIn):
         if str(cfg.get("api_key", "")).startswith("••••"):
             cfg["api_key"] = MODELS.get(role, {}).get("api_key")
         MODELS[role] = {k: v for k, v in cfg.items() if v not in (None, "")}
-    config.save_models(MODELS)
-    return get_models()
+    return {**get_models(), "saved": config.save_models(MODELS)}
 
 
 @app.get("/api/models/health")
@@ -852,7 +877,7 @@ async def create_index(body: IndexIn):
     name = body.name.strip() or indexer.suggest_name(
         cfg, MODELS["embedding"].get("model", ""), [i["name"] for i in store.indexes()])
     iid = store.create_index(name, cfg)
-    _track(_batch(indexer.build(store, iid, _models_snapshot())), iid)
+    _start_build(iid)
     return {"id": iid, "name": name}
 
 
